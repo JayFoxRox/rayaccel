@@ -10,7 +10,7 @@
 #include "Bvh2.h"
 #include "Context.h"
 #include "Environment.h"
-#include <embree2/rtcore_ray.h>
+#include <embree3/rtcore_ray.h>
 #include <assert.h>
 #include <string.h>
 #include <vector>
@@ -195,20 +195,27 @@ racc::Scene* racc::createScene(Context* context, const Vertex* vertices, unsigne
 	
 	// Create Embree scene.
 	{
-		RTCScene embreeScene = rtcNewScene(RTC_SCENE_STATIC, RTC_INTERSECT1|RTC_INTERSECT8);
+		RTCScene embreeScene = rtcNewScene(context->rtcDevice);
+		// rtcSetSceneFlags(embreeScene,RTC_BUILD_QUALITY_MEDIUM); // EMBREE_FIXME: set proper scene flags
+		// rtcSetSceneBuildQuality(embreeScene,RTC_BUILD_QUALITY_MEDIUM); // EMBREE_FIXME: set proper build quality
 		
-		unsigned geomID = rtcNewTriangleMesh(embreeScene, RTC_GEOMETRY_STATIC, triangleCount, vertexCount);
+		unsigned int geomID;
+		RTCGeometry geom_0 = rtcNewGeometry (context->rtcDevice, RTC_GEOMETRY_TYPE_TRIANGLE); // EMBREE_FIXME: check if geometry gets properly committed
+		rtcSetGeometryBuildQuality(geom_0,RTC_BUILD_QUALITY_MEDIUM);
+		rtcSetGeometryTimeStepCount(geom_0,1);
+		geomID = rtcAttachGeometry(embreeScene,geom_0);
+		rtcReleaseGeometry(geom_0);
 		
-		void* meshVertices = rtcMapBuffer(embreeScene, geomID, RTC_VERTEX_BUFFER);
+		void* meshVertices = rtcSetNewGeometryBuffer(geom_0,RTC_BUFFER_TYPE_VERTEX,0,RTC_FORMAT_FLOAT3,4*sizeof(float),vertexCount);
 		memcpy(meshVertices, vertices, sizeof(Vertex)*vertexCount);
-		rtcUnmapBuffer(embreeScene, geomID, RTC_VERTEX_BUFFER);
 		
-		void* meshTriangles = rtcMapBuffer(embreeScene, geomID, RTC_INDEX_BUFFER);
+		
+		void* meshTriangles = rtcSetNewGeometryBuffer(geom_0,RTC_BUFFER_TYPE_INDEX,0,RTC_FORMAT_UINT3,3*sizeof(int),triangleCount);
 		memcpy(meshTriangles, indices, sizeof(uint32_t)*indexCount);
-		rtcUnmapBuffer(embreeScene, geomID, RTC_INDEX_BUFFER);
 		
-		rtcSetMask(embreeScene, geomID, 0xffffffff);
-		rtcCommit(embreeScene);
+		
+		rtcSetGeometryMask(geom_0,0xffffffff);
+		rtcCommitScene(embreeScene);
 		
 		scene->embreeScene = embreeScene;
 	}
@@ -357,7 +364,7 @@ racc::Scene* racc::createScene(Context* context, const Vertex* vertices, unsigne
 }
 
 void racc::destroy(Scene* scene) {
-	rtcDeleteScene(scene->embreeScene);
+	rtcReleaseScene(scene->embreeScene);
 	
 	if (scene->gpuNodes)
 		clReleaseMemObject(scene->gpuNodes);
@@ -379,8 +386,8 @@ void racc_internal::executeRayQueryCPU(racc::Scene* scene, racc::RayStream* rayS
 	
 	unsigned i = start;
 	
-	RACC_ALIGNED(32) uint32_t valid[8];
-	_mm256_store_si256(reinterpret_cast<__m256i*>(valid), _mm256_set1_epi32(-1));
+	RACC_ALIGNED(32) int valid[8];
+  memset(valid, 0xFF, sizeof(valid));
 	
 	for (; i+7 < end; i += 8) {
 		__m256 r0 = _mm256_load_ps(rays[i+0].origin);
@@ -394,31 +401,35 @@ void racc_internal::executeRayQueryCPU(racc::Scene* scene, racc::RayStream* rayS
 		
 		_MM256_TRANSPOSE8_PS(r0, r1, r2, r3, r4, r5, r6, r7);
 		
-		RTCRay8 embreeRay;
+		RTCRayHit8 embreeRay;
 		
-		_mm256_store_ps(embreeRay.orgx, r0);
-		_mm256_store_ps(embreeRay.orgy, r1);
-		_mm256_store_ps(embreeRay.orgz, r2);
+		_mm256_store_ps(embreeRay.ray.org_x, r0);
+		_mm256_store_ps(embreeRay.ray.org_y, r1);
+		_mm256_store_ps(embreeRay.ray.org_z, r2);
 		
-		_mm256_store_ps(embreeRay.dirx, r4);
-		_mm256_store_ps(embreeRay.diry, r5);
-		_mm256_store_ps(embreeRay.dirz, r6);
+		_mm256_store_ps(embreeRay.ray.dir_x, r4);
+		_mm256_store_ps(embreeRay.ray.dir_y, r5);
+		_mm256_store_ps(embreeRay.ray.dir_z, r6);
 		
-		_mm256_store_ps(embreeRay.tnear, r3);
-		_mm256_store_ps(embreeRay.tfar, r7);
+		_mm256_store_ps(embreeRay.ray.tnear, r3);
+		_mm256_store_ps(embreeRay.ray.tfar, r7);
 		
-		_mm256_store_si256(reinterpret_cast<__m256i*>(embreeRay.geomID), _mm256_set1_epi32(RTC_INVALID_GEOMETRY_ID));
-		_mm256_store_si256(reinterpret_cast<__m256i*>(embreeRay.primID), _mm256_set1_epi32(RTC_INVALID_GEOMETRY_ID));
-		_mm256_store_si256(reinterpret_cast<__m256i*>(embreeRay.instID), _mm256_set1_epi32(RTC_INVALID_GEOMETRY_ID));
-		_mm256_store_si256(reinterpret_cast<__m256i*>(embreeRay.mask), _mm256_set1_epi32(0xFFFFFFFF));
-		_mm256_store_ps(embreeRay.time, _mm256_setzero_ps());
+		_mm256_store_si256(reinterpret_cast<__m256i*>(embreeRay.hit.geomID), _mm256_set1_epi32(RTC_INVALID_GEOMETRY_ID));
+		_mm256_store_si256(reinterpret_cast<__m256i*>(embreeRay.hit.primID), _mm256_set1_epi32(RTC_INVALID_GEOMETRY_ID));
+		_mm256_store_si256(reinterpret_cast<__m256i*>(embreeRay.hit.instID), _mm256_set1_epi32(RTC_INVALID_GEOMETRY_ID));
+		_mm256_store_si256(reinterpret_cast<__m256i*>(embreeRay.ray.mask), _mm256_set1_epi32(0xFFFFFFFF));
+		_mm256_store_ps(embreeRay.ray.time, _mm256_setzero_ps());
 		
-		rtcIntersect8(valid, scene->embreeScene, embreeRay);
+		{
+				RTCIntersectContext context;
+				rtcInitIntersectContext(&context);
+				rtcIntersect8(valid,scene->embreeScene,&context,&embreeRay);
+		}
 		
-		r0 = _mm256_load_ps(reinterpret_cast<const float*>(embreeRay.primID));
-		r1 = _mm256_load_ps(embreeRay.tfar);
-		r2 = _mm256_load_ps(embreeRay.u);
-		r3 = _mm256_load_ps(embreeRay.v);
+		r0 = _mm256_load_ps(reinterpret_cast<const float*>(embreeRay.hit.primID));
+		r1 = _mm256_load_ps(embreeRay.ray.tfar);
+		r2 = _mm256_load_ps(embreeRay.hit.u);
+		r3 = _mm256_load_ps(embreeRay.hit.v);
 		
 		_MM256_TRANSPOSE4_PS(r0, r1, r2, r3);
 		
@@ -444,32 +455,40 @@ void racc_internal::executeRayQueryCPU(racc::Scene* scene, racc::RayStream* rayS
 		Ray ray = rays[i];
 		Result result = { 0xffffffff };
 		
-		RTCRay embreeRay;
+		RTCRayHit embreeRay; // EMBREE_FIXME: use RTCRay for occlusion rays
+  embreeRay.ray.flags = 0;
 		
-		embreeRay.org[0] = ray.origin[0];
-		embreeRay.org[1] = ray.origin[1];
-		embreeRay.org[2] = ray.origin[2];
+		embreeRay.ray.org_x = ray.origin[0];
+		embreeRay.ray.org_y = ray.origin[1];
+		embreeRay.ray.org_z = ray.origin[2];
 		
-		embreeRay.dir[0] = ray.dir[0];
-		embreeRay.dir[1] = ray.dir[1];
-		embreeRay.dir[2] = ray.dir[2];
+		embreeRay.ray.dir_x = ray.dir[0];
+		embreeRay.ray.dir_y = ray.dir[1];
+		embreeRay.ray.dir_z = ray.dir[2];
 		
-		embreeRay.tnear = ray.minT;
-		embreeRay.tfar = ray.maxT;
+		embreeRay.ray.tnear = ray.minT;
+		embreeRay.ray.tfar = ray.maxT;
 		
-		embreeRay.geomID = RTC_INVALID_GEOMETRY_ID;
-		embreeRay.primID = RTC_INVALID_GEOMETRY_ID;
-		embreeRay.instID = RTC_INVALID_GEOMETRY_ID;
-		embreeRay.mask = 0xFFFFFFFF;
-		embreeRay.time = 0.0f;
+		embreeRay.hit.geomID = RTC_INVALID_GEOMETRY_ID;
+		embreeRay.hit.primID = RTC_INVALID_GEOMETRY_ID;
+		embreeRay.hit.instID[0] = RTC_INVALID_GEOMETRY_ID;
+		embreeRay.ray.mask = 0xFFFFFFFF;
+		embreeRay.ray.time = 0.0f;
 		
-		rtcIntersect(scene->embreeScene, embreeRay);
+		{
+    RTCIntersectContext context;
+    rtcInitIntersectContext(&context);
+    rtcIntersect1(scene->embreeScene,&context,&embreeRay);
+    embreeRay.hit.Ng_x = -embreeRay.hit.Ng_x; // EMBREE_FIXME: only correct for triangles,quads, and subdivision surfaces
+    embreeRay.hit.Ng_y = -embreeRay.hit.Ng_y;
+    embreeRay.hit.Ng_z = -embreeRay.hit.Ng_z;
+  }
 		
-		if (embreeRay.geomID != RTC_INVALID_GEOMETRY_ID) {
-			result.triangle = embreeRay.primID;
-			result.hit.t = embreeRay.tfar;
-			result.hit.u = embreeRay.u;
-			result.hit.v = embreeRay.v;
+		if (embreeRay.hit.geomID != RTC_INVALID_GEOMETRY_ID) {
+			result.triangle = embreeRay.hit.primID;
+			result.hit.t = embreeRay.ray.tfar;
+			result.hit.u = embreeRay.hit.u;
+			result.hit.v = embreeRay.hit.v;
 		}
 		else {
 			RACC_ALIGNED(16) float sample[4];

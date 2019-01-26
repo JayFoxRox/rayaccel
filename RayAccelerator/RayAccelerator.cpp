@@ -418,12 +418,9 @@ void racc::init() {
 	// Disable denormals for performance.
 	_MM_SET_FLUSH_ZERO_MODE(_MM_FLUSH_ZERO_ON);
 	_MM_SET_DENORMALS_ZERO_MODE(_MM_DENORMALS_ZERO_ON);
-	
-	rtcInit("isa=avx2,accel=bvh8.triangle4,builder=binned_sah2");
 }
 
 void racc::deinit() {
-	rtcExit();
 }
 
 racc::Configuration racc::defaultConfiguration(cl_context gpuContext) {
@@ -570,6 +567,8 @@ racc::Context* racc::createContext(Configuration configuration) {
 	// Initialize context.
 	Context* context = static_cast<Context*>(contextMemory);
 	
+  context->rtcDevice = rtcNewDevice("isa=avx2,accel=bvh8.triangle4,builder=binned_sah2");
+
 	context->configuration = configuration;
 	context->gpuProgram = gpuProgram;
 	
@@ -781,6 +780,8 @@ void racc::destroy(Context* context) {
 		
 		clReleaseProgram(context->gpuProgram);
 	}
+
+	rtcReleaseDevice(context->rtcDevice);
 	
 	deinit(context->schedulingMutex);
 	

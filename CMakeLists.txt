@@ -52,4 +52,4 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mavx2 -mfma")
 #set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=native")
 
 add_executable(rayaccel ${RENDERER_SOURCES} ${RAYACCELERATOR_SOURCES})
-target_link_libraries(rayaccel ${OpenCL_LIBRARIES} ${GLUT_LIBRARIES} -lGL -lpthread -lGLEW -lembree)
+target_link_libraries(rayaccel ${OpenCL_LIBRARIES} ${GLUT_LIBRARIES} -lGL -lpthread -lGLEW -lembree3)
