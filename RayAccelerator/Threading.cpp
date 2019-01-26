@@ -8,8 +8,11 @@
 
 #include "Threading.h"
 
-#if __APPLE__
+#if __APPLE || __linux__
 #include <unistd.h>
+#endif
+
+#if __APPLE__
 #include <libkern/OSAtomic.h>
 #endif
 
@@ -77,8 +80,10 @@ void racc_internal::exit(Mutex& mutex) {
 int racc_internal::atomicIncrement(int* i) {
 #ifdef _WIN32
 	return InterlockedIncrement(reinterpret_cast<volatile LONG*>(i));
-#else
+#elif __APPLE__
 	return OSAtomicIncrement32(reinterpret_cast<volatile int*>(i));
+#else
+  return __sync_fetch_and_add(reinterpret_cast<volatile int*>(i), 1);
 #endif
 }
 

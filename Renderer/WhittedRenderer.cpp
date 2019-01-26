@@ -10,6 +10,7 @@
 #include "LightPath.h"
 #include "SceneData.h"
 #include "Camera.h"
+#include <cstring>
 
 struct ALIGNED(64) LoopData {
 	racc::Ray ray;

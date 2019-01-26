@@ -12,6 +12,7 @@
 #include "WhittedRenderer.h"
 #include "SceneData.h"
 #include "Materials.h"
+#include <cstring>
 
 #ifdef _WIN32
 #include <Windows.h>
@@ -24,12 +25,22 @@ static inline uint64_t microseconds() {
 	QueryPerformanceCounter(&li);
 	return li.QuadPart *1000000ull / performanceFrequency;
 }
-#else
+#elif __APPLE__
 #include <CoreAudio/CoreAudio.h>
 
 static inline uint64_t microseconds() {
 	return AudioConvertHostTimeToNanos(AudioGetCurrentHostTime()) / 1000ull;
 }
+#elif __linux__
+#include <sys/time.h>
+
+static inline uint64_t microseconds() {
+  struct timeval tv;
+  gettimeofday(&tv,NULL);
+  return tv.tv_sec * 1000000ull + tv.tv_usec;
+}
+#else
+#error "Unsupported platform."
 #endif
 
 static const unsigned movingAverageFrames = 32;
@@ -352,6 +363,9 @@ int main(int argc, const char* argv[]) {
 	
 	glutInitWindowSize(sceneData.viewportWidth, sceneData.viewportHeight);
 	glutCreateWindow("RayAccelerator");
+
+  GLenum err = glewInit();
+  if (GLEW_OK != err) {} //FIXME
 	
 	glutDisplayFunc(render);
 	glutMouseFunc(mouse);

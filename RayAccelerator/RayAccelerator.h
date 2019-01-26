@@ -18,6 +18,9 @@
 #elif __APPLE__
 #include <OpenCL/cl.h>
 #define RACC_ALIGNED(n) __attribute__((aligned(n)))
+#elif __linux__
+#include <CL/cl.h>
+#define RACC_ALIGNED(n) __attribute__((aligned(n)))
 #else
 #error "Unsupported platform."
 #endif
