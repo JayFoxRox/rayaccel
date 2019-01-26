@@ -11,6 +11,7 @@
 
 #include "RayAccelerator.h"
 #include "Threading.h"
+#include <embree3/rtcore.h>
 
 namespace racc_internal {
 	struct GpuRayStream;
@@ -20,6 +21,7 @@ namespace racc_internal {
 namespace racc {
 	struct Context {
 		Configuration configuration;
+    RTCDevice rtcDevice;
 		cl_program gpuProgram;
 		
 		racc_internal::GpuRayStream* rayStreams;

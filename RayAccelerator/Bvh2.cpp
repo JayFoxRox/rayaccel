@@ -12,6 +12,8 @@
 #include "Threading.h"
 #include <limits>
 #include <algorithm>
+#include <cstdio>
+#include <cstring>
 
 namespace {
 	struct RACC_ALIGNED(64) Bvh2BuildState {

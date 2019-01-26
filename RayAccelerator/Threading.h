@@ -13,7 +13,7 @@
 
 #ifdef _WIN32
 #include <windows.h>
-#elif __APPLE__
+#elif __APPLE__ || __linux__
 #include <pthread.h>
 #else
 #error "Unsupported platform."

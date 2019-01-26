@@ -10,7 +10,12 @@
 #define Renderer_DisplayBuffer_h
 
 #include "VectorMath.h"
+#ifdef __linux__
+#include <GL/glew.h>
+#include <GL/glut.h>
+#else
 #include <GLUT/GLUT.h>
+#endif
 
 class DisplayBuffer {
 private:
